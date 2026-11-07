@@ -1,0 +1,17 @@
+# Rahasia & konfigurasi lokal
+.env
+.env.local
+.env.*.local
+
+# Data runtime server (pesanan & pesan kontak)
+server/data/
+
+# Dependensi (proyek ini tidak memakai dependensi, tetap dijaga)
+node_modules/
+
+# Log & berkas OS
+*.log
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
