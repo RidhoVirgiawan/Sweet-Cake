@@ -10,6 +10,8 @@
   var PRODUCTS = Array.isArray(window.CAKE_PRODUCTS) ? window.CAKE_PRODUCTS : [];
   var STORAGE_KEY = "manis-senja-cart-v1";
   var MAX_QTY = 99;
+  var SERVER_ONLY_MESSAGE = "Fitur ini hanya tersedia di versi dengan server. Website ini adalah demo tampilan.";
+  var API_UNAVAILABLE_STATUSES = [404, 405, 501];
 
   var state = {
     cart: [],
@@ -66,6 +68,19 @@
 
   function findProduct(id) {
     return productIndex[id] || null;
+  }
+
+  function isApiUnavailable(response) {
+    return API_UNAVAILABLE_STATUSES.indexOf(response.status) !== -1;
+  }
+
+  function isJsonResponse(response) {
+    var contentType = response.headers.get("content-type") || "";
+    return contentType.indexOf("application/json") !== -1;
+  }
+
+  function isNetworkFailure(message) {
+    return /Failed to fetch|NetworkError|Load failed|fetch failed/i.test(message);
   }
 
   /* ------------------------------- Keranjang -------------------------------- */
@@ -612,7 +627,7 @@
     checkoutFormStatus.classList.remove("is-error");
 
     try {
-      var response = await fetch("/api/checkout", {
+      var response = await fetch("api/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -622,9 +637,13 @@
         })
       });
 
-      var payload = await response.json().catch(function () { return {}; });
+      var isJson = isJsonResponse(response);
+      var payload = isJson ? await response.json().catch(function () { return {}; }) : {};
 
-      if (!response.ok) {
+      if (!response.ok || !isJson) {
+        if (!isJson || isApiUnavailable(response)) {
+          throw new Error(SERVER_ONLY_MESSAGE);
+        }
         throw new Error(payload.error || "Server menolak pesanan (" + response.status + ").");
       }
 
@@ -668,8 +687,8 @@
       });
     } catch (error) {
       var message = error && error.message ? error.message : "Terjadi kesalahan.";
-      if (/Failed to fetch|NetworkError|Load failed/i.test(message)) {
-        message = "Backend tidak dapat dihubungi. Jalankan server dengan “npm start” lalu coba lagi.";
+      if (isNetworkFailure(message)) {
+        message = SERVER_ONLY_MESSAGE;
       }
       checkoutFormStatus.textContent = message;
       checkoutFormStatus.classList.add("is-error");
@@ -684,8 +703,11 @@
 
   async function loadConfig() {
     try {
-      var response = await fetch("/api/config", { cache: "no-store" });
-      if (!response.ok) return;
+      var response = await fetch("api/config", { cache: "no-store" });
+      if (!response.ok || !isJsonResponse(response)) {
+        state.config.backendAvailable = false;
+        return;
+      }
       var data = await response.json();
       state.config.backendAvailable = true;
       state.config.midtransConfigured = Boolean(data.midtransConfigured);
@@ -875,12 +897,16 @@
       submitBtn.textContent = "Mengirim…";
 
       try {
-        var response = await fetch("/api/contact", {
+        var response = await fetch("api/contact", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload)
         });
-        if (!response.ok) {
+        var isJson = isJsonResponse(response);
+        if (!response.ok || !isJson) {
+          if (!isJson || isApiUnavailable(response)) {
+            throw new Error(SERVER_ONLY_MESSAGE);
+          }
           var data = await response.json().catch(function () { return {}; });
           throw new Error(data.error || "Pesan gagal dikirim.");
         }
@@ -888,8 +914,8 @@
         form.reset();
       } catch (error) {
         var message = error && error.message ? error.message : "Pesan gagal dikirim.";
-        if (/Failed to fetch|NetworkError|Load failed/i.test(message)) {
-          message = "Server tidak aktif. Jalankan “npm start” agar formulir kontak berfungsi.";
+        if (isNetworkFailure(message)) {
+          message = SERVER_ONLY_MESSAGE;
         }
         status.textContent = message;
         status.classList.add("is-error");
